@@ -238,63 +238,40 @@ module HLPTick3 =
 
         // Rotate a symbol
         let rotateSymbolTest (symLabel: string) (rotate: Rotation) (model: SheetT.Model) : (SheetT.Model) =
-            //printfn $"Rotating symbol {symLabel} by {rotate}"
+            printfn $"Rotating symbol {symLabel} by {rotate}"
             let symbolMap = model.Wire.Symbol.Symbols
-            let symbolArray = symbolMap |> Map.toArray
-            let rotareSymbol:SymbolT.Symbol = snd symbolArray.[0]
-            // the following code kept giving error don't know why
-            // let symbol =
-            //     symbolArray
-            //     |> Array.tryFind (fun (_, symbol) -> caseInvariantEqual symbol.Component.Label symLabel)
-            //     |> Option.map snd
-            //     |> Option.defaultValue failwithf "Can't find symbol with label '{symLabel}'"
-            let after_rotation = rotateSymbol rotate rotareSymbol
-            let updatedSymbolMap =
-                symbolMap
-                |> Map.add after_rotation.Id after_rotation // Update the rotated symbol
-            // Add back all other symbols to the updated map
-            let allSymbolsExceptRotated =
-                symbolArray
-                |> Array.filter (fun (id, _) -> id <> after_rotation.Id)
-                |> Array.map (fun (id, sym) -> id, sym)
-            let mergedSymbolMap =
-                Array.foldBack (fun (id, sym) -> Map.add id sym) allSymbolsExceptRotated updatedSymbolMap
-            {model with Wire.Symbol.Symbols = mergedSymbolMap}
+            // Find the symbol with the specified label
+            let getSymbol = 
+                mapValues symbolMap
+                |> Array.tryFind (fun symbol-> caseInvariantEqual symbol.Component.Label symLabel)
+                |> function | Some x -> Ok x | None -> Error "Can't find symbol with label '{symLabel}'"
+            // Update the model with the new symbol using Optic.set function
+            match getSymbol with
+            | Ok symbol ->
+                let rotatedSymbol = rotateSymbol rotate symbol
+                model 
+                |> Optic.set (symbolModel_ >-> SymbolT.symbolOf_ rotatedSymbol.Id) rotatedSymbol
+            | Error msg -> failwithf $"Error: {msg}"
+            //failwithf "Not Implemented"
 
             
 
         // Flip a symbol
         let flipSymbolTest (symLabel: string) (flip: SymbolT.FlipType) (model: SheetT.Model) : (SheetT.Model) =
             let symbolMap = model.Wire.Symbol.Symbols
-            let symbolArray = symbolMap |> Map.toArray
-            let flippedSymbol: SymbolT.Symbol = snd symbolArray.[0]
-            let test = (flippedSymbol.Component.Label |> caseInvariantEqual symLabel)
-            printfn $"label: {symbolArray.Length}"
-            printfn $"test, should be true: {test}"
-
             // Find the symbol with the specified label
-            let symbol =
-                symbolArray
-                |> Seq.tryFind (fun (_, symbol) -> caseInvariantEqual symbol.Component.Label symLabel)
-                |> Option.map snd
-                |> Option.defaultValue (failwithf $"Can't find symbol with label {symLabel}")
-
-            let flippedSymbol = flipSymbol flip symbol
-            printfn "flipped"
-
-            // Update the flipped symbol in the symbol map
-            let updatedSymbolMap =
-                symbolMap
-                |> Map.add flippedSymbol.Id flippedSymbol
-            // Add back all other symbols to the updated map
-            let allSymbolsExceptFlipped =
-                symbolArray
-                |> Array.filter (fun (id, _) -> id <> flippedSymbol.Id)
-                |> Array.map (fun (id, sym) -> id, sym)
-            // Merge the flipped symbol map with the other symbols
-            let mergedSymbolMap =
-                Array.foldBack (fun (id, sym) -> Map.add id sym) allSymbolsExceptFlipped updatedSymbolMap
-            {model with Wire.Symbol.Symbols = mergedSymbolMap}
+            let getSymbol = 
+                mapValues symbolMap
+                |> Array.tryFind (fun symbol-> caseInvariantEqual symbol.Component.Label symLabel)
+                |> function | Some x -> Ok x | None -> Error "Can't find symbol with label '{symLabel}'"
+            // Update the model with the new symbol using Optic.set function
+            match getSymbol with
+            | Ok symbol ->
+                let filppedSymbol = flipSymbol flip symbol
+                model 
+                |> Optic.set (symbolModel_ >-> SymbolT.symbolOf_ filppedSymbol.Id) filppedSymbol
+            | Error msg -> failwithf $"Error: {msg}"
+            //failwithf "Not Implemented"
 
         // let findSymbolByLabel (symLabel: string) (symbolArray: ('a * SymbolT.Symbol) array) : SymbolT.Symbol option =
         //     let predicate (_, symbol) = caseInvariantEqual symbol.Component.Label symLabel
@@ -419,12 +396,22 @@ module HLPTick3 =
         filter (fun pos -> not (positionsOverlap pos))
            gridGenerator
 
+    let randomElement list =
+            let index = random.Next(0, List.length list)
+            List.item index list
+    
+    // rotation by 180 degrees does not work
+    let rotateList = [Degree90; Degree270]
+    //flip vertically does not work
+    let flipList = [SymbolT.FlipHorizontal ; ]
+
     let makeTest6Circuit (andPos:XYPos) =
         initSheetModel
         |> placeSymbol "G1" (GateN(And,2)) andPos
         |> Result.bind (placeSymbol "FF1" DFF middleOfSheet)
         |> getOkOrFail
-        |> rotateSymbolTest "G1" Degree90
+        |> rotateSymbolTest "G1" (randomElement rotateList)
+        |> rotateSymbolTest "FF1" (randomElement rotateList)
         |> placeWire (portOf "G1" 0) (portOf "FF1" 0)
         |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
         |> getOkOrFail
@@ -434,7 +421,8 @@ module HLPTick3 =
         |> placeSymbol "G1" (GateN(And,2)) andPos
         |> Result.bind (placeSymbol "FF1" DFF middleOfSheet)
         |> getOkOrFail
-        |> flipSymbolTest "G1" SymbolT.FlipType.FlipHorizontal
+        |> flipSymbolTest "G1" (randomElement flipList)
+        |> flipSymbolTest "FF1" (randomElement flipList)
         |> placeWire (portOf "G1" 0) (portOf "FF1" 0)
         |> Result.bind (placeWire (portOf "FF1" 0) (portOf "G1" 0) )
         |> getOkOrFail
@@ -584,10 +572,10 @@ module HLPTick3 =
                 "Test1", test1 // example
                 "Test2", test2 // example
                 "Test3", test3 // example
-                "Test4", test4 
-                "Test5", test5// dummy test - delete line or replace by real test as needed
-                "Test6", test6
-                "Test7", test7
+                "Test4", test4 // exapmle
+                "Test5", test5 // test routing between two ports on two different components
+                "Test6", test6 // test routing with rotation of components
+                "Test7", test7 // test routing with flip of components
                 "Test8", fun _ _ _ -> printf "Test8"
                 "Next Test Error", fun _ _ _ -> printf "Next Error:" // Go to the nexterror in a test
 
